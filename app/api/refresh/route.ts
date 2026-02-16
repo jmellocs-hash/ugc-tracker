@@ -53,10 +53,9 @@ export async function POST(req: Request) {
     const apifyRes = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        // ✅ Para este actor (Clockworks TikTok Scraper): Video URLs
-        videoUrls: expanded,
-      }),
+     body: JSON.stringify({
+  postURLs: expanded,
+}),
     });
 
     if (!apifyRes.ok) {
