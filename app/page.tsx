@@ -1,168 +1,187 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-type Campaign = {
+const REFRESH_EVERY_MS = 15 * 60 * 1000;
+
+type LinkRow = {
   id: string;
-  name: string;
-  created_at: string;
+  url: string;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  saves?: number;
+  status?: string;
+  last_updated_at?: string;
 };
 
-export default function Home() {
-  const [name, setName] = useState("");
-  const [items, setItems] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export default function CampaignPage({ params }: { params: { id: string } }) {
+  const campaignId = params.id;
 
-  async function load() {
-    setLoading(true);
-    setError(null);
+  const [links, setLinks] = useState<LinkRow[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  const inFlight = useRef(false);
+
+  const totals = links.reduce(
+    (acc, l) => {
+      acc.views += Number(l.views || 0);
+      acc.likes += Number(l.likes || 0);
+      acc.comments += Number(l.comments || 0);
+      acc.shares += Number(l.shares || 0);
+      acc.saves += Number(l.saves || 0);
+      return acc;
+    },
+    { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 }
+  );
+
+  async function loadLinks() {
     try {
-      const res = await fetch("/api/campaigns", { cache: "no-store" });
+      const res = await fetch(`/api/campaign-links?campaignId=${campaignId}`, {
+        cache: "no-store",
+      });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to load campaigns");
-      setItems(json.data || []);
-    } catch (e: any) {
-      setError(e.message || "Error");
-    } finally {
-      setLoading(false);
+      setLinks(Array.isArray(json?.data) ? json.data : []);
+    } catch (e) {
+      console.error("loadLinks error:", e);
+      setLinks([]);
     }
   }
 
-  async function createCampaign() {
-    const n = name.trim();
-    if (!n) return;
-    setCreating(true);
-    setError(null);
+  async function runRefresh() {
+    if (!campaignId) return;
+    if (inFlight.current) return;
+
+    inFlight.current = true;
+    setRefreshing(true);
+
     try {
-      const res = await fetch("/api/campaigns", {
+      const res = await fetch(`/api/refresh?campaignId=${campaignId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: n }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to create");
-      setName("");
-      await load();
-    } catch (e: any) {
-      setError(e.message || "Error");
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error("refresh error:", json);
+      }
+
+      await loadLinks();
+      setLastUpdated(new Date().toISOString());
+    } catch (e) {
+      console.error("runRefresh error:", e);
     } finally {
-      setCreating(false);
+      setRefreshing(false);
+      inFlight.current = false;
     }
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    loadLinks();
+    // opcional: refrescar de una al entrar
+    // runRefresh();
+
+    const t = setInterval(() => {
+      runRefresh();
+    }, REFRESH_EVERY_MS);
+
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId]);
 
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ marginBottom: 6 }}>UGC Tracker</h1>
-      <p style={{ marginTop: 0, opacity: 0.7 }}>
-        Crea campañas y agrega links de TikTok (como Cobrand).
-      </p>
+    <div style={{ padding: 24 }}>
+      <a href="/" style={{ display: "inline-block", marginBottom: 12 }}>
+        ← Volver
+      </a>
 
-      <section
-        style={{
-          display: "flex",
-          gap: 10,
-          marginTop: 16,
-          padding: 14,
-          border: "1px solid #e5e5e5",
-          borderRadius: 12,
-        }}
-      >
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nombre de campaña (ej: Ryan Castro - UGC Feb)"
-          style={{
-            flex: 1,
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            fontSize: 14,
-          }}
-        />
-        <button
-          onClick={createCampaign}
-          disabled={creating || !name.trim()}
-          style={{
-            padding: "12px 14px",
-            borderRadius: 10,
-            border: "1px solid #111",
-            background: creating ? "#444" : "#111",
-            color: "white",
-            cursor: creating ? "not-allowed" : "pointer",
-            fontWeight: 600,
-          }}
-        >
-          {creating ? "Creando..." : "Crear"}
+      <h1 style={{ margin: 0 }}>Campaign</h1>
+      <p style={{ marginTop: 6, color: "#666" }}>ID: {campaignId}</p>
+
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 16 }}>
+        <button onClick={runRefresh} disabled={refreshing}>
+          {refreshing ? "Actualizando..." : "Refresh (Apify)"}
         </button>
-      </section>
 
-      {error && (
-        <div style={{ marginTop: 12, color: "#b00020" }}>
-          {error}
-        </div>
-      )}
+        <button onClick={loadLinks} disabled={refreshing}>
+          Recargar tabla
+        </button>
 
-      <section style={{ marginTop: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Campaigns</h2>
-          <button
-            onClick={load}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            Refresh
-          </button>
-        </div>
+        {lastUpdated && (
+          <small style={{ color: "#666" }}>
+            Última actualización: {new Date(lastUpdated).toLocaleString()}
+          </small>
+        )}
+      </div>
 
-        <div
-          style={{
-            marginTop: 10,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          {loading ? (
-            <div style={{ padding: 14, opacity: 0.7 }}>Cargando...</div>
-          ) : items.length === 0 ? (
-            <div style={{ padding: 14, opacity: 0.7 }}>
-              No hay campañas todavía. Crea la primera arriba 👆
-            </div>
-          ) : (
-            items.map((c) => (
-              <a
-                key={c.id}
-                href={`/campaigns/${c.id}`}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: 14,
-                  borderTop: "1px solid #f1f1f1",
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700 }}>{c.name}</div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>{new Date(c.created_at).toLocaleString()}</div>
-                </div>
-                <div style={{ opacity: 0.7 }}>Abrir →</div>
-              </a>
-            ))
-          )}
-        </div>
-      </section>
-    </main>
+      <h2 style={{ marginTop: 28 }}>Totales</h2>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div>Views: {totals.views}</div>
+        <div>Likes: {totals.likes}</div>
+        <div>Comments: {totals.comments}</div>
+        <div>Shares: {totals.shares}</div>
+        <div>Saves: {totals.saves}</div>
+      </div>
+
+      <h2 style={{ marginTop: 28 }}>Links ({links.length})</h2>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>URL</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Views</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Likes</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Comments</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Shares</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Saves</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Status</th>
+              <th style={{ borderBottom: "1px solid #ddd", padding: 8 }}>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {links.map((l) => (
+              <tr key={l.id}>
+                <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                  <a href={l.url} target="_blank" rel="noreferrer">
+                    {l.url}
+                  </a>
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.views || 0}
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.likes || 0}
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.comments || 0}
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.shares || 0}
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.saves || 0}
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.status || "-"}
+                </td>
+                <td style={{ padding: 8, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                  {l.last_updated_at ? new Date(l.last_updated_at).toLocaleString() : "-"}
+                </td>
+              </tr>
+            ))}
+
+            {links.length === 0 && (
+              <tr>
+                <td colSpan={8} style={{ padding: 12, color: "#666" }}>
+                  No hay links todavía.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
