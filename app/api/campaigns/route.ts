@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabase";
+import { X } from "@/lib/supabase";
 
 export async function GET() {
   const sb = supabaseServer();
