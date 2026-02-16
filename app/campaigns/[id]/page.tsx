@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const EVERY_15_MIN = 15 * 60 * 1000;
-
 type LinkRow = {
   id: string;
   url: string;
@@ -16,8 +14,9 @@ type LinkRow = {
   status?: string | null;
   last_error?: string | null;
   last_updated_at?: string | null;
-  created_at?: string | null;
 };
+
+const EVERY_15_MIN = 15 * 60 * 1000;
 
 export default function CampaignPage({ params }: { params: { id: string } }) {
   const campaignId = params.id;
@@ -25,17 +24,17 @@ export default function CampaignPage({ params }: { params: { id: string } }) {
   const [text, setText] = useState("");
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [lastRefreshResult, setLastRefreshResult] = useState<any>(null);
+  const [debug, setDebug] = useState<any>(null);
 
   const totals = useMemo(() => {
     return links.reduce(
-      (a, l) => {
-        a.views += Number(l.views || 0);
-        a.likes += Number(l.likes || 0);
-        a.comments += Number(l.comments || 0);
-        a.shares += Number(l.shares || 0);
-        a.saves += Number(l.saves || 0);
-        return a;
+      (acc, l) => {
+        acc.views += Number(l.views || 0);
+        acc.likes += Number(l.likes || 0);
+        acc.comments += Number(l.comments || 0);
+        acc.shares += Number(l.shares || 0);
+        acc.saves += Number(l.saves || 0);
+        return acc;
       },
       { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 }
     );
@@ -56,7 +55,7 @@ export default function CampaignPage({ params }: { params: { id: string } }) {
       .filter(Boolean)
       .slice(0, 500);
 
-    if (!urls.length) return;
+    if (urls.length === 0) return;
 
     setBusy(true);
     try {
@@ -67,8 +66,11 @@ export default function CampaignPage({ params }: { params: { id: string } }) {
       });
 
       const json = await res.json().catch(() => ({}));
+      setDebug(json);
+
       if (!res.ok) {
         alert(json?.error || "Error agregando links");
+        return;
       }
 
       setText("");
@@ -85,12 +87,11 @@ export default function CampaignPage({ params }: { params: { id: string } }) {
         method: "POST",
       });
       const json = await res.json().catch(() => ({}));
-
-      // ✅ Esto te muestra en pantalla qué pasó (updated, apifyItems, error, etc.)
-      setLastRefreshResult(json);
+      setDebug(json);
 
       if (!res.ok) {
-        alert(json?.error || "Refresh error (mira el cuadro de debug)");
+        alert(json?.error || "Refresh error");
+        return;
       }
 
       await loadLinks();
@@ -101,51 +102,39 @@ export default function CampaignPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     loadLinks();
-
-    // Auto refresh cada 15 min mientras esta página esté abierta
     const t = setInterval(() => {
       refreshNow();
     }, EVERY_15_MIN);
-
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   return (
-    <div style={{ padding: 24, maxWidth: 1150, margin: "0 auto" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
       <a href="/" style={{ display: "inline-block", marginBottom: 12 }}>
         ← Volver
       </a>
 
       <h1 style={{ margin: 0 }}>Campaign</h1>
-      <p style={{ marginTop: 6, color: "#666" }}>ID: {campaignId}</p>
+      <div style={{ color: "#666", marginTop: 6 }}>ID: {campaignId}</div>
 
-      <div
-        style={{
-          border: "1px solid #eee",
-          padding: 16,
-          borderRadius: 10,
-          marginTop: 14,
-        }}
-      >
+      <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 16, marginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>Agregar links de TikTok</h2>
-        <p style={{ marginTop: 6, color: "#666" }}>
-          Pega <b>1 link por línea</b>. Máximo 500 por campaña.
-        </p>
 
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={5}
-          style={{ width: "100%", padding: 12 }}
-          placeholder="https://www.tiktok.com/@user/video/...\nhttps://vt.tiktok.com/..."
+          style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ddd" }}
+          placeholder="1 link por línea (máx 500)
+https://vt.tiktok.com/...
+https://www.tiktok.com/@user/video/..."
         />
 
-        <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
           <button onClick={addLinks} disabled={busy}>
             {busy ? "..." : "Agregar links"}
           </button>
-
           <button onClick={() => setText("")} disabled={busy}>
             Limpiar
           </button>
@@ -158,115 +147,78 @@ export default function CampaignPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {/* ✅ Debug box para saber qué está pasando realmente */}
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: "1px dashed #ddd",
-          borderRadius: 10,
-          background: "#fafafa",
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <b>Debug refresh</b>
-          <span style={{ color: "#666" }}>
-            (te muestra la respuesta real del POST /api/refresh)
-          </span>
-        </div>
-
-        <pre style={{ whiteSpace: "pre-wrap", margin: 0, marginTop: 8 }}>
-          {lastRefreshResult ? JSON.stringify(lastRefreshResult, null, 2) : "Aún no has dado Refresh (Apify)."}
-        </pre>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 16 }}>
+        <div><b>Views:</b> {totals.views}</div>
+        <div><b>Likes:</b> {totals.likes}</div>
+        <div><b>Comments:</b> {totals.comments}</div>
+        <div><b>Shares:</b> {totals.shares}</div>
+        <div><b>Saves:</b> {totals.saves}</div>
       </div>
 
-      <h2 style={{ marginTop: 18 }}>Totales</h2>
-      <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-        <div>Views: {totals.views}</div>
-        <div>Likes: {totals.likes}</div>
-        <div>Comments: {totals.comments}</div>
-        <div>Shares: {totals.shares}</div>
-        <div>Saves: {totals.saves}</div>
+      <div style={{ marginTop: 16, border: "1px dashed #ddd", borderRadius: 10, padding: 12, background: "#fafafa" }}>
+        <b>Debug</b>
+        <pre style={{ margin: 0, marginTop: 8, whiteSpace: "pre-wrap" }}>
+          {debug ? JSON.stringify(debug, null, 2) : "Dale Refresh (Apify) para ver qué devuelve /api/refresh"}
+        </pre>
       </div>
 
       <h2 style={{ marginTop: 18 }}>Links ({links.length})</h2>
 
-      <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 10 }}>
-                URL
-              </th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Views</th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Likes</th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Comments</th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Shares</th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Saves</th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Status</th>
-              <th style={{ borderBottom: "1px solid #ddd", padding: 10 }}>Updated</th>
-            </tr>
-          </thead>
+      <div style={{ border: "1px solid #eee", borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px 90px 90px 110px 160px", gap: 0, background: "#f6f6f6", padding: 10, fontWeight: 600 }}>
+          <div>URL</div>
+          <div style={{ textAlign: "center" }}>Views</div>
+          <div style={{ textAlign: "center" }}>Likes</div>
+          <div style={{ textAlign: "center" }}>Comments</div>
+          <div style={{ textAlign: "center" }}>Shares</div>
+          <div style={{ textAlign: "center" }}>Saves</div>
+          <div style={{ textAlign: "center" }}>Status</div>
+          <div style={{ textAlign: "center" }}>Updated</div>
+        </div>
 
-          <tbody>
-            {links.map((l) => (
-              <tr key={l.id}>
-                <td style={{ padding: 10, borderBottom: "1px solid #f0f0f0" }}>
-                  <a href={l.url} target="_blank" rel="noreferrer">
-                    {l.url}
-                  </a>
-                  {l.canonical_url ? (
-                    <div style={{ color: "#666", fontSize: 12, marginTop: 4 }}>
-                      canonical: {l.canonical_url}
-                    </div>
-                  ) : null}
-                  {l.last_error ? (
-                    <div style={{ color: "#b00020", fontSize: 12, marginTop: 4 }}>
-                      error: {l.last_error}
-                    </div>
-                  ) : null}
-                </td>
+        {links.length === 0 ? (
+          <div style={{ padding: 12, color: "#666" }}>No hay links todavía.</div>
+        ) : (
+          links.map((l) => (
+            <div
+              key={l.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 90px 90px 90px 90px 90px 110px 160px",
+                padding: 10,
+                borderTop: "1px solid #eee",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <a href={l.url} target="_blank" rel="noreferrer">
+                  {l.url}
+                </a>
+                {l.last_error ? (
+                  <div style={{ color: "#b00020", fontSize: 12, marginTop: 4 }}>
+                    {l.last_error}
+                  </div>
+                ) : null}
+              </div>
 
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.views || 0}
-                </td>
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.likes || 0}
-                </td>
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.comments || 0}
-                </td>
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.shares || 0}
-                </td>
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.saves || 0}
-                </td>
-
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.status || "-"}
-                </td>
-
-                <td style={{ padding: 10, textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
-                  {l.last_updated_at ? new Date(l.last_updated_at).toLocaleString() : "-"}
-                </td>
-              </tr>
-            ))}
-
-            {links.length === 0 && (
-              <tr>
-                <td colSpan={8} style={{ padding: 14, color: "#666" }}>
-                  No hay links todavía. Pega links arriba y presiona “Agregar links”.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              <div style={{ textAlign: "center" }}>{l.views || 0}</div>
+              <div style={{ textAlign: "center" }}>{l.likes || 0}</div>
+              <div style={{ textAlign: "center" }}>{l.comments || 0}</div>
+              <div style={{ textAlign: "center" }}>{l.shares || 0}</div>
+              <div style={{ textAlign: "center" }}>{l.saves || 0}</div>
+              <div style={{ textAlign: "center" }}>{l.status || "-"}</div>
+              <div style={{ textAlign: "center", fontSize: 12, color: "#666" }}>
+                {l.last_updated_at ? new Date(l.last_updated_at).toLocaleString() : "-"}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
-      <p style={{ marginTop: 14, color: "#666" }}>
-        Auto-refresh: cada 15 minutos mientras esta página esté abierta.
-      </p>
+      <div style={{ marginTop: 12, color: "#666" }}>
+        Auto-refresh cada 15 min (mientras la página esté abierta).
+      </div>
     </div>
   );
+}
 }
