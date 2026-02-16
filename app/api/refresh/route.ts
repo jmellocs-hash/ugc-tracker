@@ -40,9 +40,7 @@ export async function POST(req: Request) {
     if (error) return Response.json({ error: error.message }, { status: 500 });
     if (!links || links.length === 0) return Response.json({ ok: true, updated: 0 });
 
-    const urls = links
-      .map((l: any) => (l.canonical_url || l.url).trim())
-      .filter(Boolean);
+    const urls = links.map((l: any) => (l.canonical_url || l.url).trim()).filter(Boolean);
 
     // Expandir links cortos
     const expanded = await Promise.all(urls.map(expandUrl));
@@ -52,13 +50,11 @@ export async function POST(req: Request) {
       `https://api.apify.com/v2/acts/${encodeURIComponent(APIFY_ACTOR_ID)}` +
       `/run-sync-get-dataset-items?token=${encodeURIComponent(APIFY_TOKEN)}&timeout=300`;
 
-    // ✅ INPUT PARA ESTE ACTOR (clockworks/tiktok-scraper)
-    // En el panel que tú mostraste, el bloque se llama "Video URLs"
-    // Apify normalmente lo recibe como "videoUrls".
     const apifyRes = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        // ✅ Para este actor (Clockworks TikTok Scraper): Video URLs
         videoUrls: expanded,
       }),
     });
@@ -133,7 +129,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Para que no te salga "Cannot GET" si lo abres en el navegador:
 export async function GET() {
   return Response.json({ ok: true, hint: "Use POST /api/refresh?campaignId=..." });
 }
