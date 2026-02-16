@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "UGC Tracker",
   description: "TikTok UGC campaign tracker",
